@@ -7,9 +7,63 @@ import (
 	"net/http"
 	"net/url"
 	"siteMapBuilder/linker"
+	"siteMapBuilder/queue"
 	"strings"
 )
 
+type LinkNode struct {
+	Link  string
+	Level int
+}
+
+// traversalDFS performs a depth-first search traversal of URLs starting from urlStr.
+// It explores links up to the specified depth, marking visited URLs to avoid cycles.
+// Results are appended to traversedLinks in DFS order.
+func traversalDFS(urlStr string, depth int, visited map[string]bool, traversedLinks *[]string) {
+	if depth == 0 {
+		return
+	}
+	visited[urlStr] = true
+	*traversedLinks = append(*traversedLinks, urlStr)
+	for _, link := range getData(urlStr) {
+		if !visited[link] {
+			traversalDFS(link, depth-1, visited, traversedLinks)
+		}
+	}
+}
+
+// traversalBFS performs a breadth-first search traversal of URLs starting from urlStr.
+// It explores links level by level up to maxDepth, marking visited URLs to avoid cycles.
+// Results are appended to traversedLinks in BFS order (level by level).
+func traversalBFS(urlStr string, maxDepth int, traversedLinks *[]string) {
+	var q queue.Queue[LinkNode]
+	visited := make(map[string]bool)
+
+	q.Push(LinkNode{Link: urlStr, Level: 0})
+	visited[urlStr] = true
+
+	for !q.IsEmpty() {
+		currLink, _ := q.Pop()
+		*traversedLinks = append(*traversedLinks, currLink.Link)
+		for _, childLink := range getData(currLink.Link) {
+			if !visited[childLink] && currLink.Level < maxDepth {
+				q.Push(LinkNode{Link: childLink, Level: currLink.Level + 1})
+				visited[childLink] = true
+			}
+		}
+	}
+}
+
+// getData fetches and parses all links from the given URL.
+// It makes an HTTP GET request, extracts all <a> tag hrefs, converts them to absolute URLs,
+// and filters to only return links with the same domain as the original URL.
+// Returns an empty slice if the HTTP request fails.
+//
+// Parameters:
+//   - urlStr: The URL to fetch and parse
+//
+// Returns:
+//   - A slice of absolute URLs from the same domain
 func getData(urlStr string) []string {
 	resp, err := http.Get(urlStr)
 	if err != nil {
@@ -62,10 +116,19 @@ func withPrefix(prefix string) func(string) bool {
 }
 
 func main() {
-	urlFlag := flag.String("url", "https://gophercises.com/cyoa", "The URL you want to build your siteMap for")
+	urlFlag := flag.String("url", "https://gophercises.com", "The URL you want to build your siteMap for")
+	depthFlag := flag.Int("depth", 10, "Maximum Number of links deep to traverse")
+	traversalMethod := flag.String("traversal", "bfs", "Traversal method for parsing links: dfs/bfs")
 	flag.Parse()
-	links := getData(*urlFlag)
-	for _, link := range links {
+	var traversedLinks []string
+	switch {
+	case strings.ToLower(*traversalMethod) == "dfs":
+		visited := make(map[string]bool)
+		traversalDFS(*urlFlag, *depthFlag, visited, &traversedLinks)
+	default:
+		traversalBFS(*urlFlag, *depthFlag, &traversedLinks)
+	}
+	for _, link := range traversedLinks {
 		fmt.Println(link)
 	}
 }
