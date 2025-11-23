@@ -1,19 +1,33 @@
 package main
 
 import (
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"siteMapBuilder/linker"
 	"siteMapBuilder/queue"
 	"strings"
+	"time"
 )
+
+const xmlns string = "http://www.sitemaps.org/schemas/sitemap/0.9"
 
 type LinkNode struct {
 	Link  string
 	Level int
+}
+
+type loc struct {
+	Value string `xml:"loc"`
+}
+
+type urlset struct {
+	Urls  []loc  `xml:"url"`
+	Xmlns string `xml:"xmlns,attr"`
 }
 
 // traversalDFS performs a depth-first search traversal of URLs starting from urlStr.
@@ -114,12 +128,40 @@ func withPrefix(prefix string) func(string) bool {
 	}
 }
 
+// Based on number of pages traversed, this will store the result
+// in a XML file as per the standard sitemap protocol.
+// https://www.sitemaps.org/index.html
+func createXML(traversedLinks *[]string) error {
+	xmlFile, err := os.Create("sitemap.xml")
+	if err != nil {
+		fmt.Printf("Error while creating XML file %v\n", err)
+		return err
+	}
+	defer xmlFile.Close()
+	toXML := urlset{
+		Urls:  make([]loc, len(*traversedLinks)),
+		Xmlns: xmlns,
+	}
+	for ind, link := range *traversedLinks {
+		toXML.Urls[ind] = loc{link}
+	}
+	enc := xml.NewEncoder(xmlFile)
+	enc.Indent("", "  ")
+	xmlFile.WriteString(xml.Header)
+	if err := enc.Encode(toXML); err != nil {
+		fmt.Printf("Error while encoding XML: %v\n", err)
+		return err
+	}
+	return nil
+}
+
 func main() {
-	urlFlag := flag.String("url", "https://gophercises.com", "The URL you want to build your siteMap for")
+	urlFlag := flag.String("url", "https://gobyexample.com", "The URL you want to build your siteMap for")
 	depthFlag := flag.Int("depth", 10, "Maximum Number of links deep to traverse")
 	traversalMethod := flag.String("traversal", "bfs", "Traversal method for parsing links: dfs/bfs")
 	flag.Parse()
 	var traversedLinks []string
+	start := time.Now()
 	switch {
 	case strings.ToLower(*traversalMethod) == "dfs":
 		visited := make(map[string]bool)
@@ -127,7 +169,7 @@ func main() {
 	default:
 		traversalBFS(*urlFlag, *depthFlag, &traversedLinks)
 	}
-	for _, link := range traversedLinks {
-		fmt.Println(link)
-	}
+	fmt.Println("Time (seconds) took in pages traversal: ", time.Since(start).Seconds())
+	createXML(&traversedLinks)
+	fmt.Println("TotalTime (seconds) took in completion: ", time.Since(start).Seconds())
 }
