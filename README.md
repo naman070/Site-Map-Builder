@@ -21,8 +21,9 @@ This project builds an XML sitemap for any given URL up to a specified depth usi
 ```bash
 git clone https://github.com/yourusername/siteMapBuilder.git
 cd siteMapBuilder
-go mod download
-go build
+go mod init siteMapBuilder
+go mod tidy
+go run main.go
 ```
 
 ## Usage
