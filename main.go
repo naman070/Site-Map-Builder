@@ -58,12 +58,6 @@ func traversalBFS(urlStr string, maxDepth int, traversedLinks *[]string) {
 // It makes an HTTP GET request, extracts all <a> tag hrefs, converts them to absolute URLs,
 // and filters to only return links with the same domain as the original URL.
 // Returns an empty slice if the HTTP request fails.
-//
-// Parameters:
-//   - urlStr: The URL to fetch and parse
-//
-// Returns:
-//   - A slice of absolute URLs from the same domain
 func getData(urlStr string) []string {
 	resp, err := http.Get(urlStr)
 	if err != nil {
@@ -77,20 +71,25 @@ func getData(urlStr string) []string {
 		Host:   reqUrl.Host,
 	}
 	baseUrlStr := baseUrl.String()
-	return filter(parseHtmlTags(resp.Body, baseUrlStr), withPrefix(baseUrlStr))
+	return filter(parseHtmlTags(resp.Body, baseUrl), withPrefix(baseUrlStr))
 }
 
 // parseHtmlTags extracts all <a> tag href values, converting relative
 // paths into absolute URLs based on baseUrlStr.
-func parseHtmlTags(r io.Reader, baseUrlStr string) []string {
+func parseHtmlTags(r io.Reader, baseUrl *url.URL) []string {
 	links, _ := linker.ParseHTML(r)
 	var ret []string
 	for _, link := range links {
-		if strings.HasPrefix(link.Href, "/") {
-			ret = append(ret, baseUrlStr+link.Href)
-		} else if strings.HasPrefix(link.Href, "http") {
-			ret = append(ret, link.Href)
+		href := strings.TrimSpace(link.Href)
+		if href == "" || withPrefix("#")(href) || withPrefix("javascript:")(href) {
+			continue
 		}
+		parsedURL, err := url.Parse(href)
+		if err != nil {
+			continue
+		}
+		resolvedURL := baseUrl.ResolveReference(parsedURL)
+		ret = append(ret, resolvedURL.String())
 	}
 	return ret
 }
